@@ -1,14 +1,32 @@
 <template>
-  <div class="container" :class="{ 'party-mode': partyMode }" :style="gridStyle">
-    <div class="cell" v-for="i in totalCells" :key="i" :class="{ rotated: rotatedCells.has(i), special: i === specialCell, party: i === partyCell }" @click="onCellClick(i)">
+  <div class="container" :class="{ 'party-mode': partyMode, falling, rising }" :style="gridStyle">
+    <div class="cell" v-for="i in totalCells" :key="i" :class="{ rotated: rotatedCells.has(i), special: i === specialCell, party: i === partyCell }" :style="(falling || rising) ? { animationDelay: `${Math.random() * 0.8}s` } : {}" @click="onCellClick(i)">
       <img :src="shuffled[i - 1]" alt="flower" />
     </div>
   </div>
 
-  <dialog ref="dialogRef" class="flower-dialog" @click="closeDialog">
-    <div>
-      Will you be my valentine?
-    </div>
+  <dialog ref="dialogRef" class="flower-dialog" @cancel.prevent>
+    <button class="close-button" @click="closeDialog">&times;</button>
+
+    <template v-if="dialogStep === 'ask'">
+      <div style="color: white">Anja, will you be my valentine?</div>
+      <div class="dialog-buttons">
+        <button class="fall-button" @click="answerYes">Yes</button>
+        <button class="fall-button" @click="answerNo">No</button>
+      </div>
+    </template>
+
+    <template v-if="dialogStep === 'sure'">
+      <div style="color: white">Are you sure?</div>
+      <div class="dialog-buttons">
+        <button ref="runawayRef" class="fall-button runaway" :style="{ transform: `translate(${runawayOffset.x}px, ${runawayOffset.y}px)` }" @mouseover="moveRunaway">Yes</button>
+        <button class="fall-button" @click="sureNo">No</button>
+      </div>
+    </template>
+
+    <template v-if="dialogStep === 'party'">
+      <div style="color: white">yeeeeeeeeaaaah!</div>
+    </template>
   </dialog>
 </template>
 
@@ -50,6 +68,7 @@ const gap = 20
 
 const rotatedCells = ref(new Set<number>())
 const partyMode = ref(false)
+const falling = ref(false)
 
 const dialogRef = ref<HTMLDialogElement>()
 
@@ -64,6 +83,7 @@ function toggleRotation(i: number) {
 
 function onCellClick(i: number) {
   if (i === specialCell.value) {
+    dialogStep.value = 'ask'
     dialogRef.value?.showModal()
   } else if (i === partyCell.value) {
     partyMode.value = !partyMode.value
@@ -78,8 +98,79 @@ function onCellClick(i: number) {
   }
 }
 
+const dialogStep = ref<'ask' | 'sure' | 'party'>('ask')
+
 function closeDialog() {
   dialogRef.value?.close()
+  dialogStep.value = 'ask'
+  if (partyMode.value) {
+    stopParty()
+  }
+}
+
+const rising = ref(false)
+
+function startParty() {
+  partyMode.value = true
+  audio.currentTime = 0.95
+  audio.play()
+}
+
+function stopParty() {
+  partyMode.value = false
+  audio.pause()
+}
+
+function dropFlowers() {
+  rising.value = false
+  falling.value = true
+}
+
+function riseFlowers() {
+  falling.value = false
+  rising.value = true
+}
+
+function answerYes() {
+  dialogStep.value = 'party'
+  startParty()
+}
+
+function answerNo() {
+  dialogStep.value = 'sure'
+  dropFlowers()
+}
+
+function sureYes() {
+  closeDialog()
+}
+
+const runawayOffset = ref({ x: 0, y: 0 })
+const runawayRef = ref<HTMLButtonElement>()
+
+function moveRunaway() {
+  const dialog = dialogRef.value
+  const btn = runawayRef.value
+  if (!dialog || !btn) return
+
+  const dialogRect = dialog.getBoundingClientRect()
+  const btnRect = btn.getBoundingClientRect()
+
+  const padding = 16
+  const minX = dialogRect.left + padding - (btnRect.left - runawayOffset.value.x)
+  const maxX = dialogRect.right - padding - btnRect.width - (btnRect.left - runawayOffset.value.x)
+  const minY = dialogRect.top + padding - (btnRect.top - runawayOffset.value.y)
+  const maxY = dialogRect.bottom - padding - btnRect.height - (btnRect.top - runawayOffset.value.y)
+
+  const x = minX + Math.random() * (maxX - minX)
+  const y = minY + Math.random() * (maxY - minY)
+  runawayOffset.value = { x, y }
+}
+
+function sureNo() {
+  dialogStep.value = 'ask'
+  runawayOffset.value = { x: 0, y: 0 }
+  riseFlowers()
 }
 
 const cols = computed(() => {
@@ -121,9 +212,14 @@ const gridStyle = computed(() => ({
   height: 100vh;
   overflow: hidden;
   display: grid;
+  transition: background-color 5s ease;
 
   &.party-mode {
     animation: strobe 0.3s infinite;
+  }
+
+  &.falling {
+    background-color: #1a1a1a;
   }
 }
 
@@ -133,9 +229,42 @@ const gridStyle = computed(() => ({
   100% { background-color: black; }
 }
 
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 100, 150, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(255, 100, 150, 0.8); }
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(45deg);
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  0% {
+    transform: translateY(100vh) rotate(45deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
 }
 
 .cell {
@@ -167,6 +296,16 @@ const gridStyle = computed(() => ({
   .party-mode & img {
     animation: spin 1s linear infinite;
   }
+
+  .falling & {
+    animation: fall 1.5s ease-in forwards;
+  }
+
+  .rising & {
+    opacity: 0;
+    transform: translateY(100vh);
+    animation: rise 1.5s ease-out forwards;
+  }
 }
 
 .flower-dialog {
@@ -176,10 +315,14 @@ const gridStyle = computed(() => ({
   border-radius: 24px;
   padding: 3rem 4rem;
   font-family: 'Poppins', sans-serif;
-  font-weight: 300;
-  font-size: 1.5rem;
+  font-weight: 600;
+  font-size: 2.2rem;
   letter-spacing: 0.02em;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -187,5 +330,66 @@ const gridStyle = computed(() => ({
     0 8px 32px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
   outline: none;
+  position: relative;
+}
+
+.close-button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.8rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 1;
+  }
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 1rem;
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.fall-button {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 400;
+  font-size: 1rem;
+  padding: 0.7rem 1.5rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.3s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &.runaway {
+    position: relative;
+    transition: transform 0.2s ease;
+  }
 }
 </style>
